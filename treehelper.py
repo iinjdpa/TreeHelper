@@ -181,7 +181,13 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
             for obj in crrObj[1].ViewObject.claimChildren():
                 level = crrObj[0]
                 # Guardamos su nivel dentro del árbol, el propio objeto y el nombre del objeto padre
-                dictObjs[obj.Name] = [level+1,obj,crrObj[1].Name]
+                dcName = obj.Name
+                ct = 0
+                # Un mismo objeto puede estar en distintas partes del árbol. No repetimos clave
+                while dcName in dictObjs:
+                    dcName = f'{dcName}{ct:04d}'
+                    ct+=1
+                dictObjs[dcName] = [level+1,obj,crrObj[1].Name]
                 lstObjs.append(dictObjs[obj.Name])
         
         # Iteramos ahora sobre los objetos recogidos para insertarlos en el árbol
@@ -194,7 +200,6 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
             itemElem.setIcon(0,dictObjs[k][1].ViewObject.Icon)
             itemElem.setExpanded(True)
             dictItems[k] = itemElem
-
 
 if __name__ == '__main__': 
     mform=Treehelper()
