@@ -5,7 +5,7 @@ __Comment__ = '''
 Permite gestionar el arbol de FreeCAD abriendo sub-ventanas para los elementos seleccionados
 '''
 __Author__ = "Daniel Pose. iinjdpa at gmail"
-__Version__ = '0.1'
+__Version__ = '0.1.1'
 __Date__ = '2021-11-15'
 __License__ = 'MIT'
 __Web__ = ""
@@ -95,11 +95,13 @@ class TreeDrops(QtGui.QTreeWidget):
             # parent = self.indexAt(event.pos())
             destiny = self.itemAt(event.pos()).text(1)
             origin = Gui.Selection.getCompleteSelection()[0].Name
+            origin_father = App.ActiveDocument.getObject(origin).InList[0].Name
             # origin = App.ActiveDocument.ActiveObject.Name
-
-            App.ActiveDocument.getObject(origin).adjustRelativeLinks(App.ActiveDocument.getObject(destiny))
-            App.ActiveDocument.getObject(destiny).addObject(App.ActiveDocument.getObject(origin))
-
+            try:
+                App.ActiveDocument.getObject(origin).adjustRelativeLinks(App.ActiveDocument.getObject(destiny))
+                App.ActiveDocument.getObject(destiny).addObject(App.ActiveDocument.getObject(origin))
+            except:
+                App.ActiveDocument.getObject(origin_father).removeObject(App.ActiveDocument.getObject(origin))
             App.ActiveDocument.recompute()
 
             self.itemDropped.emit()
@@ -151,28 +153,44 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
         """
         self.treeWidget2.clear()
 
+        doc = App.activeDocument()
+        if doc == None:
+            doc = FreeCAD.newDocument()
+
         # El objeto seleccionado será el primero del árbol
-        if Gui.Selection.getCompleteSelection():
-            if not self.mainelement:
+        if self.mainelement:
+            if self.mainelement.Name == doc.Name:
+                # El objeto principal es el documento
+                mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
+                mainTreeItem.setText(0,doc.Name)
+                mainTreeItem.setText(1,doc.Name)
+                mainTreeItem.setExpanded(True)
+                objSel = self.mainelement
+            else:
+                # El objeto principal es otro cualquiera
+                objSel = self.mainelement
+                mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
+                mainTreeItem.setText(0,objSel.Label)
+                mainTreeItem.setText(1,objSel.Name)
+                mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                mainTreeItem.setExpanded(True)
+        else:
+            if Gui.Selection.getCompleteSelection():
                 objSel = Gui.Selection.getCompleteSelection()[0]
                 self.mainelement = objSel
+                mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
+                mainTreeItem.setText(0,objSel.Label)
+                mainTreeItem.setText(1,objSel.Name)
+                mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                mainTreeItem.setExpanded(True)
             else:
-                objSel = self.mainelement
-            mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
-            mainTreeItem.setText(0,objSel.Label)
-            mainTreeItem.setText(1,objSel.Name)
-            mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
-            mainTreeItem.setExpanded(True)
-        else:
-            doc = App.activeDocument()
-            if doc == None:
-                doc = FreeCAD.newDocument()
-            mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
-            mainTreeItem.setText(0,doc.Name)
-            mainTreeItem.setText(1,doc.Name)
-            mainTreeItem.setExpanded(True)
-            objSel = Objdoc(doc)
-
+                objSel = Objdoc(doc)
+                self.mainelement = objSel
+                mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
+                mainTreeItem.setText(0,doc.Name)
+                mainTreeItem.setText(1,doc.Name)
+                mainTreeItem.setExpanded(True)
+            
         # Iteramos sobre los objetos bajo el objeto seleccionado
         dictObjs = OrderedDict()
         lstObjs = [[0,objSel,'main']]
