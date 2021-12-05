@@ -5,8 +5,8 @@ __Comment__ = '''
 Permite gestionar el arbol de FreeCAD abriendo sub-ventanas para los elementos seleccionados
 '''
 __Author__ = "Daniel Pose. iinjdpa at gmail"
-__Version__ = '0.1.1'
-__Date__ = '2021-11-15'
+__Version__ = '0.2'
+__Date__ = '2021-12-05'
 __License__ = 'MIT'
 __Web__ = ""
 __Wiki__ = ""
@@ -21,19 +21,22 @@ __Files__ = ''
 import FreeCAD as App
 import FreeCADGui as Gui
 from PySide import QtCore, QtGui
-from PySide.QtCore import Qt
-from PySide.QtGui import QDialog, QApplication, QTreeWidgetItem
-from PySide.QtGui import QMessageBox
+from PySide.QtCore import Qt, QByteArray, QDataStream, QIODevice
+from PySide.QtGui import QDialog, QApplication, QTreeWidgetItem, QDockWidget, QGraphicsDropShadowEffect, QColor
+from PySide.QtGui import QMessageBox, QAbstractItemView, QDrag
+import PySide2
 import os
 import sys
 from TreeHelper import ui_treewindow
 from collections import OrderedDict
+import time
 
 
 class Objdoc(object):
     def __init__(self,doc):
         self.ViewObject = mViewObject()
         self.Name = doc.Name
+        self.Label = doc.Name
 
 class mViewObject(object):
     def __init__(self):
@@ -48,6 +51,7 @@ class mViewObject(object):
         mw = Gui.getMainWindow()
         self.tw = mw.findChildren(QtGui.QTreeWidget)
         self.tw0 = self.tw[0]
+        self.tw0.repaint()
         self.FCtreeitems = self.tw0.findItems('*', Qt.MatchWrap | Qt.MatchWildcard  | Qt.MatchRecursive)
         root_labels = []
         for it in self.FCtreeitems:
@@ -62,8 +66,6 @@ class mViewObject(object):
         root_objects = App.ActiveDocument.RootObjects
         root_objects_from_labels = []
         if len(root_labels) == len(root_objects):
-            return root_objects
-        else:
             for obj in root_labels:
                 obj_by_label = App.ActiveDocument.getObjectsByLabel(obj)
                 if len(obj_by_label) > 1:
@@ -71,16 +73,47 @@ class mViewObject(object):
                     return []
                 else:
                     root_objects_from_labels.append(App.ActiveDocument.getObjectsByLabel(obj)[0])
-        return root_objects_from_labels
+            return root_objects_from_labels
+        else:
+            return root_objects
+
+    def update(self):
+        pass
 
 class TreeDrops(QtGui.QTreeWidget):
     itemDropped = QtCore.Signal()
+    customMimeType = "application/x-qabstractitemmodeldatalist"
     def __init__(self, parent=None):
         super(TreeDrops, self).__init__(parent=None)
-        # self.setColumnCount(1)
-        # self.setDefaultDropAction(QtCore.Qt.CopyAction)
-        # self.setDragDropMode(QtGui.QAbstractItemView.InternalMove)
         self.setAcceptDrops(True)
+        self.setDragDropMode(QAbstractItemView.DragDrop)
+        self.dragEnabled()
+        self.setSelectionMode(QtGui.QAbstractItemView.SingleSelection)
+
+    def startDrag(self, supportedActions):
+        drag = QDrag(self)
+        mimedata = self.model().mimeData(self.selectedIndexes())
+
+        encoded = QByteArray()
+        stream = QDataStream(encoded, QIODevice.WriteOnly)
+        self.encodeData(self.selectedItems(), stream)
+        mimedata.setData(self.customMimeType, encoded)
+
+        drag.setMimeData(mimedata)
+        drag.exec_(supportedActions)
+
+    def encodeData(self, items, stream):
+        stream.writeInt32(len(items))
+        for item in items:
+            p = item
+            rows = []
+            while p is not None:
+                rows.append(self.indexFromItem(p).row())
+                p = p.parent()
+            stream.writeInt32(len(rows))
+            for row in reversed(rows):
+                stream.writeInt32(row)
+        return stream
 
     def dropEvent(self, event):
         global miglobal
@@ -94,16 +127,45 @@ class TreeDrops(QtGui.QTreeWidget):
 
             # parent = self.indexAt(event.pos())
             destiny = self.itemAt(event.pos()).text(1)
-            origin = Gui.Selection.getCompleteSelection()[0].Name
-            origin_father = App.ActiveDocument.getObject(origin).InList[0].Name
-            # origin = App.ActiveDocument.ActiveObject.Name
-            try:
-                App.ActiveDocument.getObject(origin).adjustRelativeLinks(App.ActiveDocument.getObject(destiny))
-                App.ActiveDocument.getObject(destiny).addObject(App.ActiveDocument.getObject(origin))
-            except:
-                App.ActiveDocument.getObject(origin_father).removeObject(App.ActiveDocument.getObject(origin))
-            App.ActiveDocument.recompute()
 
+            origin_label = event.source().selectedItems()[0].text(0)
+            obj_by_label = App.ActiveDocument.getObjectsByLabel(origin_label)
+            if len(obj_by_label) > 1:
+                QMessageBox.critical(self, "Error","There are objects with same label!")
+                return
+            else:
+                origin_obj = App.ActiveDocument.getObjectsByLabel(origin_label)[0]
+            
+            # Buscamos el objeto padre del origen
+            if event.source().selectedItems()[0].parent():
+                origin_father_label = event.source().selectedItems()[0].parent().text(0)
+            else:
+                return
+
+            obj_by_label = App.ActiveDocument.getObjectsByLabel(origin_father_label)
+            if len(obj_by_label) > 1:
+                QMessageBox.critical(self, "Error","There are objects with same label!")
+                return
+            else:
+                if App.ActiveDocument.getObjectsByLabel(origin_father_label):
+                    origin_father = App.ActiveDocument.getObjectsByLabel(origin_father_label)[0]
+            
+            App.ActiveDocument.openTransaction('moveobject')
+            # Object moved between sub-elements
+            if App.ActiveDocument.getObject(destiny):
+                origin_obj.adjustRelativeLinks(App.ActiveDocument.getObject(destiny))
+                App.ActiveDocument.getObject(destiny).addObject(origin_obj)
+            else:
+                # Object moved to main
+                origin_father.removeObject(origin_obj)
+            
+            # Repaint FreeCAD QtreeWidget for update changes
+            tw = mw.findChildren(QtGui.QTreeWidget)
+            tw0 = [t.repaint() for t in tw]
+            
+            App.ActiveDocument.commitTransaction()
+            App.ActiveDocument.recompute()
+            
             self.itemDropped.emit()
             # Esta línea hace que se mueva la información de un árbol al otro
             # self.model().dropMimeData(event.mimeData(), event.dropAction(), 0, 0, parent)
@@ -127,7 +189,7 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
         self.treeWidget2.setColumnCount(2)
         self.treeWidget2.setLineWidth(6)
         self.treeWidget2.setAlternatingRowColors(True)
-        self.treeWidget2.setIconSize(QtCore.QSize(12, 12))
+        self.treeWidget2.setIconSize(QtCore.QSize(18, 18))
         self.treeWidget2.setAnimated(True)
         self.treeWidget2.header().sectionSize(1200)
         self.treeWidget2.header().setDefaultSectionSize(1200)
@@ -146,7 +208,14 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
         self.treeWidget2.itemDropped.connect(self.updatetree)
 
     def updatetree(self):
-        self.loadtree()
+        # Actualizamos todos los sub-arboles creados
+        mw = Gui.getMainWindow()
+        qd = mw.findChildren(QtGui.QDialog,name='Tree helper')
+        for q in qd:
+            try:
+                q.loadtree()
+            except:
+                pass
 
     def loadtree(self):
         """Lee el árbol de FreeCAD a partir del elemento seleccionado y lo carga en el árbol de ayuda
@@ -172,7 +241,10 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
                 mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
                 mainTreeItem.setText(0,objSel.Label)
                 mainTreeItem.setText(1,objSel.Name)
-                mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                try:
+                    mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                except:
+                    pass
                 mainTreeItem.setExpanded(True)
         else:
             if Gui.Selection.getCompleteSelection():
@@ -181,7 +253,10 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
                 mainTreeItem  = QTreeWidgetItem(self.treeWidget2)
                 mainTreeItem.setText(0,objSel.Label)
                 mainTreeItem.setText(1,objSel.Name)
-                mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                try:
+                    mainTreeItem.setIcon(0,objSel.ViewObject.Icon)
+                except:
+                    pass
                 mainTreeItem.setExpanded(True)
             else:
                 objSel = Objdoc(doc)
@@ -196,6 +271,7 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
         lstObjs = [[0,objSel,'main']]
         while lstObjs:
             crrObj = lstObjs.pop()
+            # crrObj[1].ViewObject.update()
             for obj in crrObj[1].ViewObject.claimChildren():
                 level = crrObj[0]
                 # Guardamos su nivel dentro del árbol, el propio objeto y el nombre del objeto padre
@@ -215,12 +291,16 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
             itemElem = QTreeWidgetItem(dictItems[dictObjs[k][2]])
             itemElem.setText(0,dictObjs[k][1].Label)
             itemElem.setText(1,dictObjs[k][1].Name)
-            itemElem.setIcon(0,dictObjs[k][1].ViewObject.Icon)
+            try:
+                itemElem.setIcon(0,dictObjs[k][1].ViewObject.Icon)
+            except:
+                pass
             itemElem.setExpanded(True)
             dictItems[k] = itemElem
 
 if __name__ == '__main__': 
-    mform=Treehelper()
+    mw = Gui.getMainWindow()
+    mform=Treehelper(mw)
     mform.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
     mform.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
     mform.show()
