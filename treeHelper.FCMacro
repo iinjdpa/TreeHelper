@@ -13,7 +13,7 @@ __Help__ = "Select a folder, part or body where helper tree must grow. Drag obje
 __Status__ = "Alpha"
 __Requires__ = "Freecad >= v0.19"
 __Communication__ = "https://github.com/iinjdpa/TreeHelper/issues"
-__Files__ = ''
+__Files__ = "/treeHelper/ui_treewindow.py,/treeHelper/treeHelper.svg"
 
 
 import FreeCAD as App
