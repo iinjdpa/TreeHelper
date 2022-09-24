@@ -25,7 +25,7 @@ from PySide.QtGui import QMessageBox, QAbstractItemView, QDrag
 import PySide2
 import os
 import sys
-from TreeHelper import ui_treewindow
+from treeHelper import ui_treewindow
 from collections import OrderedDict
 import time
 
