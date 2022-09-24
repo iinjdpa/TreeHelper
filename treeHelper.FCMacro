@@ -1,20 +1,18 @@
 # coding: utf-8
 
-__Name__ = 'Tree helper'
-__Comment__ = '''
-Permite gestionar el arbol de FreeCAD abriendo sub-ventanas para los elementos seleccionados
-'''
-__Author__ = "Daniel Pose. iinjdpa at gmail"
-__Version__ = '0.3'
-__Date__ = '2022-07-17'
-__License__ = 'MIT'
-__Web__ = ""
+__Name__ = "Tree Helper"
+__Comment__ = "Macro to generate a helper tree that allows you to easily move objects in the tree structure"
+__Author__ = "Daniel Pose"
+__Version__ = "0.0.4"
+__Date__ = "2022-09-04"
+__License__ = "MIT"
+__Web__ = "https://github.com/iinjdpa/TreeHelper"
 __Wiki__ = ""
-__Icon__ = ''
-__Help__ = ''
-__Status__ = 'alpha'
-__Requires__ = 'Freecad >= 0.19'
-__Communication__ = ''
+__Icon__ = "/treeHelper/treeHelper.svg"
+__Help__ = "Select a folder, part or body where helper tree must grow. Drag object from main tree to helper tree"
+__Status__ = "Alpha"
+__Requires__ = "Freecad >= v0.19"
+__Communication__ = "https://github.com/iinjdpa/TreeHelper/issues"
 __Files__ = ''
 
 
@@ -22,7 +20,7 @@ import FreeCAD as App
 import FreeCADGui as Gui
 from PySide import QtCore, QtGui
 from PySide.QtCore import Qt, QByteArray, QDataStream, QIODevice
-from PySide.QtGui import QDialog, QApplication, QTreeWidgetItem, QDockWidget, QGraphicsDropShadowEffect, QColor
+from PySide.QtGui import QDialog, QApplication, QTreeWidgetItem, QDockWidget, QGraphicsDropShadowEffect, QColor,QMainWindow
 from PySide.QtGui import QMessageBox, QAbstractItemView, QDrag
 import PySide2
 import os
@@ -169,7 +167,7 @@ class TreeDrops(QtGui.QTreeWidget):
             
             self.itemDropped.emit()
 
-class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
+class Treehelper(QDockWidget,ui_treewindow.Ui_DockWidget):
     window_closed = QtCore.Signal()
     def __init__(self,parent=None):
         super(Treehelper,self).__init__(parent,QtCore.Qt.WindowStaysOnTopHint)
@@ -181,7 +179,7 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
         self.gridLayout.replaceWidget(self.treeWidget, self.treeWidget2)
         self.treeWidget.close()
         qtreewidgetitem0 = self.treeWidget2.headerItem()
-        qtreewidgetitem0.setText(0, u"Element")
+        qtreewidgetitem0.setText(0, u"Elementos")
         qtreewidgetitem1 = self.treeWidget2.headerItem()
         qtreewidgetitem1.setText(1, u"Name")
         self.gridLayout.update()
@@ -211,10 +209,16 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
     def updatetree(self):
         # Actualizamos todos los sub-arboles creados
         mw = Gui.getMainWindow()
-        qd = mw.findChildren(QtGui.QDialog,name='Tree helper')
+        qd = mw.findChildren(QtGui.QDockWidget,name='Tree helper')
         for q in qd:
             try:
-                q.loadtree()
+                if q.isHidden():
+                    # Si el arbol esta oculto, lo eliminamos para no sobrecargar el DockWidget
+                    q.setParent(None)
+                    q.close()
+                    del q
+                else:
+                    q.loadtree()
             except:
                 pass
 
@@ -246,7 +250,7 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
 
         # El objeto seleccionado será el primero del árbol
         if self.mainelement:
-            # Es la primera vez que se genera el arbol
+            # NO es la primera vez que se genera el arbol
             isBeingUpdated = True
             if self.mainelement.Name == doc.Name:
                 # El objeto principal es el documento
@@ -329,7 +333,6 @@ class Treehelper(QDialog,ui_treewindow.Ui_Dialog):
 if __name__ == '__main__': 
     mw = Gui.getMainWindow()
     mform=Treehelper(mw)
-    mform.setWindowFlag(Qt.WindowMinimizeButtonHint, True)
-    mform.setWindowFlag(Qt.WindowMaximizeButtonHint, True)
+    mform.loadtree()
     mform.show()
-    mform.exec_()
+    mw.addDockWidget(QtCore.Qt.RightDockWidgetArea,mform)
